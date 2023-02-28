@@ -2,6 +2,7 @@
 //! Example of a component include the Hex/ASCII editors and the Unsaved Changes warning.
 
 pub(crate) mod editor;
+pub(crate) mod help;
 pub(crate) mod jump_to_byte;
 pub(crate) mod unsaved_changes;
 
@@ -19,6 +20,7 @@ pub(crate) enum Window {
     JumpToByte,
     UnsavedChanges,
     Label(usize),
+    Help,
     Unhandled,
 }
 

@@ -186,6 +186,9 @@ pub(crate) fn handle_character_input(
             '$' if is_hex => {
                 app.key_handler.end(&mut app.data, &mut app.display, &mut app.labels);
             }
+            '?' if is_hex => {
+                app.set_focused_window(Window::Help);
+            }
             _ => {
                 app.key_handler.char(&mut app.data, &mut app.display, &mut app.labels, char);
             }
@@ -215,10 +218,9 @@ pub(crate) fn handle_mouse_input(app: &mut Application, mouse: MouseEvent) {
                         app.data.nibble = nibble.expect("Clicking on Hex should return a nibble!");
                     }
                 }
-                Window::Label(_)
-                | Window::Unhandled
-                | Window::JumpToByte
-                | Window::UnsavedChanges => {}
+                _ => {
+                    unimplemented!();
+                }
             }
         }
         MouseEventKind::Drag(MouseButton::Left) => {
@@ -249,10 +251,9 @@ pub(crate) fn handle_mouse_input(app: &mut Application, mouse: MouseEvent) {
                             adjust_offset(&mut app.data, &mut app.display, &mut app.labels);
                         }
                     }
-                    Window::Label(_)
-                    | Window::Unhandled
-                    | Window::JumpToByte
-                    | Window::UnsavedChanges => {}
+                    _ => {
+                        unimplemented!();
+                    }
                 }
             }
         }
@@ -269,11 +270,9 @@ pub(crate) fn handle_mouse_input(app: &mut Application, mouse: MouseEvent) {
                         }
                     }
                 }
-                Window::Hex
-                | Window::Ascii
-                | Window::Unhandled
-                | Window::JumpToByte
-                | Window::UnsavedChanges => {}
+                _ => {
+                    unimplemented!();
+                }
             }
         }
         MouseEventKind::ScrollUp => {

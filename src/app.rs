@@ -16,8 +16,8 @@ use crate::{
     label::LabelHandler,
     screen::ScreenHandler,
     windows::{
-        editor::Editor, jump_to_byte::JumpToByte, unsaved_changes::UnsavedChanges, KeyHandler,
-        Window,
+        editor::Editor, help::Help, jump_to_byte::JumpToByte, unsaved_changes::UnsavedChanges,
+        KeyHandler, Window,
     },
 };
 
@@ -248,6 +248,13 @@ impl Application {
             }
             Window::UnsavedChanges => {
                 self.key_handler = Box::from(UnsavedChanges::new());
+                self.display.comp_layouts.popup = ScreenHandler::calculate_popup_dimensions(
+                    self.display.terminal_size,
+                    self.key_handler.as_ref(),
+                );
+            }
+            Window::Help => {
+                self.key_handler = Box::from(Help::new());
                 self.display.comp_layouts.popup = ScreenHandler::calculate_popup_dimensions(
                     self.display.terminal_size,
                     self.key_handler.as_ref(),
