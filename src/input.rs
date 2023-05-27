@@ -14,7 +14,11 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent,
 use crate::{
     app::{Action, Application, Nibble},
     label::LABEL_TITLES,
-    windows::{adjust_offset, PopupOutput, Window},
+    windows::{
+        adjust_offset,
+        search::{perform_search, SearchDirection},
+        PopupOutput, Window,
+    },
 };
 
 /// Wrapper function that calls the corresponding [`KeyHandler`](crate::windows::KeyHandler) methods of
@@ -91,54 +95,7 @@ pub(crate) fn handle_character_input(
     modifiers: KeyModifiers,
 ) -> Result<bool, Box<dyn Error>> {
     if modifiers == KeyModifiers::CONTROL {
-        match char {
-            'j' => {
-                if app.key_handler.is_focusing(Window::JumpToByte) {
-                    app.focus_editor();
-                } else {
-                    app.set_focused_window(Window::JumpToByte);
-                }
-            }
-            'q' => {
-                if !app.key_handler.is_focusing(Window::UnsavedChanges) {
-                    if app.hash_contents() == app.data.hashed_contents {
-                        return Ok(false);
-                    }
-                    app.set_focused_window(Window::UnsavedChanges);
-                }
-            }
-            's' => {
-                app.data.file.rewind()?;
-                app.data.file.write_all(&app.data.contents)?;
-                app.data.file.set_len(app.data.contents.len() as u64)?;
-
-                app.data.hashed_contents = app.hash_contents();
-
-                app.labels.notification = String::from("Saved!");
-            }
-            'z' => {
-                if let Some(action) = app.data.actions.pop() {
-                    match action {
-                        Action::CharacterInput(offset, byte, nibble) => {
-                            app.data.offset = offset;
-                            if let Some(nibble) = nibble {
-                                app.data.nibble = nibble;
-                            }
-                            app.data.contents[offset] = byte;
-                        }
-                        Action::Backspace(offset, byte) => {
-                            app.data.contents.insert(offset, byte);
-                            app.data.offset = offset + 1;
-                        }
-                        Action::Delete(offset, byte) => {
-                            app.data.contents.insert(offset, byte);
-                            app.data.offset = offset;
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
+        return handle_control_options(char, app);
     } else if modifiers == KeyModifiers::ALT {
         match char {
             '=' => {
@@ -162,7 +119,7 @@ pub(crate) fn handle_character_input(
         match char {
             'q' if is_hex => {
                 if !app.key_handler.is_focusing(Window::UnsavedChanges) {
-                    if app.hash_contents() == app.data.hashed_contents {
+                    if app.data.hash_contents() == app.data.hashed_contents {
                         return Ok(false);
                     }
                     app.set_focused_window(Window::UnsavedChanges);
@@ -186,10 +143,100 @@ pub(crate) fn handle_character_input(
             '$' if is_hex => {
                 app.key_handler.end(&mut app.data, &mut app.display, &mut app.labels);
             }
+            '/' if is_hex => {
+                app.set_focused_window(Window::Search);
+            }
             _ => {
                 app.key_handler.char(&mut app.data, &mut app.display, &mut app.labels, char);
             }
         }
+    }
+    Ok(true)
+}
+
+fn handle_control_options(char: char, app: &mut Application) -> Result<bool, Box<dyn Error>> {
+    match char {
+        'j' => {
+            if app.key_handler.is_focusing(Window::JumpToByte) {
+                app.focus_editor();
+            } else {
+                app.set_focused_window(Window::JumpToByte);
+            }
+        }
+        'f' => {
+            if app.key_handler.is_focusing(Window::Search) {
+                app.focus_editor();
+            } else {
+                app.set_focused_window(Window::Search);
+            }
+        }
+        'q' => {
+            if !app.key_handler.is_focusing(Window::UnsavedChanges) {
+                if app.data.hash_contents() == app.data.hashed_contents {
+                    return Ok(false);
+                }
+                app.set_focused_window(Window::UnsavedChanges);
+            }
+        }
+        's' => {
+            app.data.file.rewind()?;
+            app.data.file.write_all(&app.data.contents)?;
+            app.data.file.set_len(app.data.contents.len() as u64)?;
+
+            app.data.hashed_contents = app.data.hash_contents();
+
+            app.labels.notification = String::from("Saved!");
+        }
+        'e' => {
+            app.labels.switch_endianness();
+            app.labels.update_all(&app.data.contents[app.data.offset..]);
+
+            app.labels.notification = app.labels.endianness.to_string();
+        }
+        'd' => {
+            app.key_handler.page_down(&mut app.data, &mut app.display, &mut app.labels);
+        }
+        'u' => {
+            app.key_handler.page_up(&mut app.data, &mut app.display, &mut app.labels);
+        }
+        'n' => {
+            perform_search(
+                &mut app.data,
+                &mut app.display,
+                &mut app.labels,
+                &SearchDirection::Forward,
+            );
+        }
+        'p' => {
+            perform_search(
+                &mut app.data,
+                &mut app.display,
+                &mut app.labels,
+                &SearchDirection::Backward,
+            );
+        }
+        'z' => {
+            if let Some(action) = app.data.actions.pop() {
+                match action {
+                    Action::CharacterInput(offset, byte, nibble) => {
+                        app.data.offset = offset;
+                        if let Some(nibble) = nibble {
+                            app.data.nibble = nibble;
+                        }
+                        app.data.contents[offset] = byte;
+                    }
+                    Action::Backspace(offset, byte) => {
+                        app.data.contents.insert(offset, byte);
+                        app.data.offset = offset + 1;
+                    }
+                    Action::Delete(offset, byte) => {
+                        app.data.contents.insert(offset, byte);
+                        app.data.offset = offset;
+                    }
+                }
+            }
+        }
+        _ => {}
     }
     Ok(true)
 }
@@ -218,6 +265,7 @@ pub(crate) fn handle_mouse_input(app: &mut Application, mouse: MouseEvent) {
                 Window::Label(_)
                 | Window::Unhandled
                 | Window::JumpToByte
+                | Window::Search
                 | Window::UnsavedChanges => {}
             }
         }
@@ -252,6 +300,7 @@ pub(crate) fn handle_mouse_input(app: &mut Application, mouse: MouseEvent) {
                     Window::Label(_)
                     | Window::Unhandled
                     | Window::JumpToByte
+                    | Window::Search
                     | Window::UnsavedChanges => {}
                 }
             }
@@ -273,6 +322,7 @@ pub(crate) fn handle_mouse_input(app: &mut Application, mouse: MouseEvent) {
                 | Window::Ascii
                 | Window::Unhandled
                 | Window::JumpToByte
+                | Window::Search
                 | Window::UnsavedChanges => {}
             }
         }
@@ -299,7 +349,7 @@ pub(crate) fn handle_mouse_input(app: &mut Application, mouse: MouseEvent) {
     }
 }
 
-/// A wrapper around [`handle_cursor`] that does the additional things that come with a click.
+/// A wrapper around [`handle_editor_cursor_action`] that does the additional things that come with a click.
 #[allow(clippy::cast_possible_truncation)]
 fn handle_editor_click(
     window: Window,
@@ -335,7 +385,7 @@ fn handle_editor_click(
     res
 }
 
-/// A wrapper around [`handle_cursor`] that does the additional things that come with a drag.
+/// A wrapper around [`handle_editor_cursor_action`] that does the additional things that come with a drag.
 #[allow(clippy::cast_possible_truncation)]
 fn handle_editor_drag(
     window: Window,

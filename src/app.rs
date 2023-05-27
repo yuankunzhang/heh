@@ -11,6 +11,7 @@ use arboard::Clipboard;
 use crossterm::event::{self, Event};
 
 use crate::decoder::Encoding;
+use crate::windows::search::Search;
 use crate::{
     input,
     label::LabelHandler,
@@ -98,6 +99,31 @@ pub(crate) struct AppData {
 
     /// A series of actions that keep track of what the user does.
     pub(crate) actions: Vec<Action>,
+
+    /// Term the user is searching for.
+    pub(crate) search_term: String,
+
+    /// List of all offsets that the search term was found at.
+    pub(crate) search_offsets: Vec<usize>,
+}
+
+impl AppData {
+    /// Reindexes contents to find locations of the user's search term.
+    pub(crate) fn reindex_search(&mut self) {
+        self.search_offsets = self
+            .contents
+            .windows(self.search_term.len())
+            .enumerate()
+            .filter_map(|(idx, w)| (w == self.search_term.as_bytes()).then_some(idx))
+            .collect();
+    }
+
+    /// Hashes the contents of a file and is used to check if there are any changes.
+    pub(crate) fn hash_contents(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        hasher.write(&self.contents);
+        hasher.finish()
+    }
 }
 
 /// Application provides the user interaction interface and renders the terminal screen in response
@@ -166,13 +192,15 @@ impl Application {
                 clipboard,
                 editor: Editor::Hex,
                 actions: vec![],
+                search_term: String::new(),
+                search_offsets: Vec::new(),
             },
             display,
             labels,
             key_handler: Box::from(Editor::Hex),
         };
 
-        app.data.hashed_contents = app.hash_contents();
+        app.data.hashed_contents = app.data.hash_contents();
 
         Ok(app)
     }
@@ -205,23 +233,16 @@ impl Application {
         let event = event::read()?;
         match event {
             Event::Key(key) => {
+                self.labels.notification.clear();
                 return input::handle_key_input(self, key);
             }
             Event::Mouse(mouse) => {
+                self.labels.notification.clear();
                 input::handle_mouse_input(self, mouse);
             }
-            Event::Resize(_, _) | Event::FocusGained | Event::FocusLost | Event::Paste(_) => {
-                todo!("Handle resize, focus, and paste events");
-            }
+            Event::Resize(_, _) | Event::FocusGained | Event::FocusLost | Event::Paste(_) => {}
         }
         Ok(true)
-    }
-
-    /// Hashes the contents of a file and is used to check if there are any changes.
-    pub(crate) fn hash_contents(&self) -> u64 {
-        let mut hasher = DefaultHasher::new();
-        hasher.write(&self.data.contents);
-        hasher.finish()
     }
 
     /// Sets the current [`KeyHandler`]. This should be used when trying to focus another window.
@@ -241,6 +262,13 @@ impl Application {
             }
             Window::JumpToByte => {
                 self.key_handler = Box::from(JumpToByte::new());
+                self.display.comp_layouts.popup = ScreenHandler::calculate_popup_dimensions(
+                    self.display.terminal_size,
+                    self.key_handler.as_ref(),
+                );
+            }
+            Window::Search => {
+                self.key_handler = Box::from(Search::new());
                 self.display.comp_layouts.popup = ScreenHandler::calculate_popup_dimensions(
                     self.display.terminal_size,
                     self.key_handler.as_ref(),
